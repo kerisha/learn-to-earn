@@ -49,14 +49,17 @@ export class Secrets extends SmartContract {
   }
 
   @method addEligibleAddress(address: PublicKey, witness: EligibleAddressesWitness) {
-    this.eligibleAddressesRoot.getAndRequireEquals();
+    // validate max number of addresses can not go over 100
     const addressCount = this.eligibleAddressesCount.getAndRequireEquals();
+    const newAddressCount = addressCount.add(1);
+    newAddressCount.assertLessThanOrEqual(100);
 
-    addressCount.assertLessThanOrEqual(100);
+    // update the eligible addresses root
+    this.eligibleAddressesRoot.getAndRequireEquals();
     const hash = Poseidon.hash(address.toFields());
     const newRoot = witness.calculateRoot(hash);
     this.eligibleAddressesRoot.set(newRoot);
-    this.eligibleAddressesCount.set(addressCount.add(1));
+    this.eligibleAddressesCount.set(newAddressCount);
   }
 
   @method getValidMessage(message: Field) {
