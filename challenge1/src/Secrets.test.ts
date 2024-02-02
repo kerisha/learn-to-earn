@@ -1,5 +1,6 @@
-import { Secrets } from './Secrets';
-import { Field, Mina, PrivateKey, PublicKey, AccountUpdate } from 'o1js';
+import { sizeInBits } from 'o1js/dist/node/provable/field-bigint';
+import { EligibleAddressesWitness, Secrets } from './Secrets';
+import { Field, Mina, PrivateKey, PublicKey, AccountUpdate, MerkleTree, Poseidon, Gadgets } from 'o1js';
 
 /*
  * This file specifies how to test the `Add` example smart contract. It is safe to delete this file and replace
@@ -56,13 +57,56 @@ describe('Secrets', () => {
 
     // update transaction
     const txn = await Mina.transaction(senderAccount, () => {
-      zkApp.addValidMessage();
+      zkApp.incrementTestCounter();
     });
     await txn.prove();
     await txn.sign([senderKey]).send();
 
     const updatedNum = zkApp.counter.get();
     expect(updatedNum).toEqual(Field(1));
+  });
+
+  it('can add an eligible address', async () => {
+    await localDeploy();
+
+    const addressesTree = new MerkleTree(8);
+    addressesTree.setLeaf(0n, Poseidon.hash(senderAccount.toFields()));
+    const witness = new EligibleAddressesWitness(addressesTree.getWitness(0n));
+
+    // update transaction
+    let txn = await Mina.transaction(senderAccount, () => {
+      zkApp.addEligibleAddress(senderAccount, witness);
+    });
+    await txn.prove();
+    await txn.sign([senderKey]).send();
+
+    let treeRoot = zkApp.eligibleAddressesRoot.get();
+    console.log('first root', treeRoot.toString());
+    expect(treeRoot).toEqual(addressesTree.getRoot());
+
+    addressesTree.setLeaf(1n, Poseidon.hash(deployerAccount.toFields()));
+    const witness2 = new EligibleAddressesWitness(addressesTree.getWitness(1n));
+
+    // update transaction
+    txn = await Mina.transaction(deployerAccount, () => {
+      zkApp.addEligibleAddress(deployerAccount, witness2);
+    });
+    await txn.prove();
+    await txn.sign([deployerKey]).send();
+
+    treeRoot = zkApp.eligibleAddressesRoot.get();
+    console.log('second root', treeRoot.toString());
+    expect(treeRoot).toEqual(addressesTree.getRoot());
+  });
+
+  it('can get length of bits', async () => {
+    let a = Field(0b0101);
+    let b = Field(0b0011);
+
+    let c = Gadgets.xor(a, b, 9); // xor-ing 4 bits
+    console.log(c);
+    c.assertEquals(0b0110);
+    //c.assertEquals(0b10);
   });
 
   it('should only allow one address to submit one test message', async () => {
