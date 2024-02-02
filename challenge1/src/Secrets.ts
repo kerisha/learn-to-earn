@@ -49,6 +49,7 @@ export class Secrets extends SmartContract {
 
   @method getValidMessage(message: Field) {
     let mask = Field(0b00111111);
+    // Take last 6 bits
     let sixBitsMessage = Gadgets.and(message, mask, 6);
 
     let flag1Mask = Field(0b000001);
@@ -65,7 +66,7 @@ export class Secrets extends SmartContract {
 
     let flag1Set = flag1.equals(1); // 0b00000000
     let flag2Set = flag2.equals(2); // 0b00000010
-    let flag4Set = flag4.equals(8); //0b00001000
+    let flag4Set = flag4.equals(8); // 0b00001000
 
     // If flag 1 is true, all other flags must be false 
     sixBitsMessage = Provable.if(flag1Set, Field(1), sixBitsMessage);
@@ -76,10 +77,10 @@ export class Secrets extends SmartContract {
     let flag2res2 = Gadgets.xor(flag2res1, flag3Mask, 6);
     sixBitsMessage = Provable.if(flag2Set, flag2res2, sixBitsMessage);
 
+    // If flag 4 is true, flag 5 and 6 must be false
     let not5Mask = Gadgets.not(flag5Mask, 6);
     let not6Mask = Gadgets.not(flag6Mask, 6);
     let part1 = Gadgets.and(sixBitsMessage, not5Mask, 6);
-    // If flag 4 is true, flag 5 and 6 must be false
     sixBitsMessage = Provable.if(flag4Set, Gadgets.and(part1, not6Mask, 6), sixBitsMessage);
 
     return sixBitsMessage;
