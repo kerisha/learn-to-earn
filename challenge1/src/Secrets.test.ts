@@ -1,3 +1,5 @@
+debugger;
+
 import { sizeInBits } from 'o1js/dist/node/provable/field-bigint';
 import { EligibleAddressesWitness, Secrets } from './Secrets';
 import { Field, Mina, PrivateKey, PublicKey, AccountUpdate, MerkleTree, Poseidon, Gadgets } from 'o1js';
@@ -99,16 +101,6 @@ describe('Secrets', () => {
     expect(treeRoot).toEqual(addressesTree.getRoot());
   });
 
-  it('can get length of bits', async () => {
-    let a = Field(0b0101);
-    let b = Field(0b0011);
-
-    let c = Gadgets.xor(a, b, 9); // xor-ing 4 bits
-    console.log(c);
-    c.assertEquals(0b0110);
-    //c.assertEquals(0b10);
-  });
-
   it('should only allow one address to submit one test message', async () => {
     // Use a nullifier
   });
@@ -121,21 +113,52 @@ describe('Secrets', () => {
     // Use a specific merkle tree that equates to 100 nodes/leaves...
   });
 
-  it('should set all other flags in message to be false if flag 1 is false', async () => {
+  it('should set all other flags in message to be false if flag 1 is true', async () => {
     // Bitwise operations
+    const message = Field(0b100001);
+    const expected = Field(0b000001);
+    let actual = Field(0b0);
+
+    actual = await zkApp.getValidMessage(message);
+    expect(actual).toEqual(expected);
+
+    const message2 = Field(0b100000);
+    let actual2 = Field(0b0);
+
+    actual2 = await zkApp.getValidMessage(message2);
+    expect(actual2).toEqual(message2);
   });
 
   it('should set flag 3 to be true in message if flag 2 is true', async () => {
     // Bitwise operations
+    const message = Field(0b010010);
+    const expected = Field(0b010110);
+    let actual = Field(0b0);
 
+    actual = await zkApp.getValidMessage(message);
+    console.log(actual);
+    expect(actual).toEqual(expected);
   });
 
-  it('should set flags 5 and 6 in message to be true if flag 4 is true', async () => {
+  it('should set flags 5 and 6 in message to be false if flag 4 is true', async () => {
     // Bitwise operations
+    const message = Field(0b111000);
+    const expected = Field(0b001000);
+    let actual = Field(0b0);
 
+    actual = await zkApp.getValidMessage(message);
+    console.log(actual);
+    expect(actual).toEqual(expected);
   });
 
-  it('', async () => {
+  it('should follow all consecutive message rules', async () => {
+    // Bitwise operations
+    const message = Field(0b111011);
+    const expected = Field(0b000101);
+    let actual = Field(0b0);
 
+    actual = await zkApp.getValidMessage(message);
+    console.log(actual);
+    expect(actual).toEqual(expected);
   });
 });

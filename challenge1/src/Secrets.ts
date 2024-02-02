@@ -1,5 +1,4 @@
-import { Field, SmartContract, state, State, method, PublicKey, MerkleWitness, Poseidon, Circuit, Provable } from 'o1js';
-import { Gadgets, Gadgets, Gadgets, Gadgets, Gadgets, Gadgets, Gadgets, Gadgets, Gadgets } from 'o1js/dist/node/lib/gadgets/gadgets';
+import { Field, SmartContract, state, State, method, PublicKey, MerkleWitness, Poseidon, Circuit, Provable, Gadgets } from 'o1js';
 
 export class SecretMessageWitness extends MerkleWitness(256) { }
 export class EligibleAddressesWitness extends MerkleWitness(8) { }
@@ -50,41 +49,39 @@ export class Secrets extends SmartContract {
 
   @method getValidMessage(message: Field) {
     let mask = Field(0b00111111);
-    let sixBitsRep = Gadgets.and(message, mask, 6);
+    let sixBitsMessage = Gadgets.and(message, mask, 6);
 
-    let flag1Mask = Field(0b00000001);
-    let flag2Mask = Field(0b00000010);
-    let flag3Mask = Field(0b00000100);
-    let flag4Mask = Field(0b00001000);
-    let flag5Mask = Field(0b00010000);
-    let flag6Mask = Field(0b00100000);
+    let flag1Mask = Field(0b000001);
+    let flag2Mask = Field(0b000010);
+    let flag3Mask = Field(0b000100);
+    let flag4Mask = Field(0b001000);
+    let flag5Mask = Field(0b010000);
+    let flag6Mask = Field(0b100000);
 
-    let flag1 = Gadgets.and(sixBitsRep, flag1Mask, 6);
-    let flag2 = Gadgets.and(sixBitsRep, flag2Mask, 6);
-    let flag3 = Gadgets.and(sixBitsRep, flag3Mask, 6);
-    let flag4 = Gadgets.and(sixBitsRep, flag4Mask, 6);
-    let flag5 = Gadgets.and(sixBitsRep, flag5Mask, 6);
-    let flag6 = Gadgets.and(sixBitsRep, flag6Mask, 6);
+    let flag1 = Gadgets.and(sixBitsMessage, flag1Mask, 6);
+    let flag2 = Gadgets.and(sixBitsMessage, flag2Mask, 6);
+    let flag3 = Gadgets.and(sixBitsMessage, flag3Mask, 6);
+    let flag4 = Gadgets.and(sixBitsMessage, flag4Mask, 6);
 
-    let flag1Set = flag1.equals(1);
-    let flag2Set = flag2.equals(1);
-    // let flag3NotSet = flag3.equals(0);
-    let flag4Set = flag4.equals(1);
-    // let flag5NotSet = flag5.equals(0);
-    // let flag6NotSet = flag6.equals(0);
+    let flag1Set = flag1.equals(1); // 0b00000000
+    let flag2Set = flag2.equals(2); // 0b00000010
+    let flag4Set = flag4.equals(8); //0b00001000
 
-    // If flag 1 is true, all other flags must be false
-    sixBitsRep = Provable.if(flag1Set, Field(1), sixBitsRep);
+    // If flag 1 is true, all other flags must be false 
+    sixBitsMessage = Provable.if(flag1Set, Field(1), sixBitsMessage);
 
     // If flag 2 is true, flag 3 must also be true
-    sixBitsRep = Provable.if(flag2Set, Gadgets.xor(sixBitsRep, (Gadgets.and(flag3Mask, flag3, 6)), 6), sixBitsRep);
+    const notThirdMask = Gadgets.not(flag3Mask, 6);
+    let flag2res1 = Gadgets.and(notThirdMask, sixBitsMessage, 6);
+    let flag2res2 = Gadgets.xor(flag2res1, flag3Mask, 6);
+    sixBitsMessage = Provable.if(flag2Set, flag2res2, sixBitsMessage);
 
     let not5Mask = Gadgets.not(flag5Mask, 6);
     let not6Mask = Gadgets.not(flag6Mask, 6);
-    let part1 = Gadgets.and(sixBitsRep, not5Mask, 6);
+    let part1 = Gadgets.and(sixBitsMessage, not5Mask, 6);
     // If flag 4 is true, flag 5 and 6 must be false
-    sixBitsRep = Provable.if(flag4Set, Gadgets.and(part1, not6Mask, 6), sixBitsRep);
+    sixBitsMessage = Provable.if(flag4Set, Gadgets.and(part1, not6Mask, 6), sixBitsMessage);
 
-    return sixBitsRep;
+    return sixBitsMessage;
   }
 }
