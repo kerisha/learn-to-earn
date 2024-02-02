@@ -24,6 +24,18 @@ export class Secrets extends SmartContract {
     this.nullifierRoot.set(Field(0));
   }
 
+  @method setEligibleAddressesRoot(newRoot: Field) {
+    // only owners should do this
+    this.eligibleAddressesRoot.getAndRequireEquals();
+    this.eligibleAddressesRoot.set(newRoot);
+  }
+
+  @method setAddressesCounter(count: Field) {
+    // only owners should do this
+    this.eligibleAddressesCount.getAndRequireEquals();
+    this.eligibleAddressesCount.set(count);
+  }
+
   @method update() {
     const currentState = this.num.getAndRequireEquals();
     const newState = currentState.add(2);
@@ -78,10 +90,8 @@ export class Secrets extends SmartContract {
     sixBitsMessage = Provable.if(flag2Set, flag2res2, sixBitsMessage);
 
     // If flag 4 is true, flag 5 and 6 must be false
-    let not5Mask = Gadgets.not(flag5Mask, 6);
-    let not6Mask = Gadgets.not(flag6Mask, 6);
-    let part1 = Gadgets.and(sixBitsMessage, not5Mask, 6);
-    sixBitsMessage = Provable.if(flag4Set, Gadgets.and(part1, not6Mask, 6), sixBitsMessage);
+    let flag4SetMask = Field(0b001111);
+    sixBitsMessage = Provable.if(flag4Set, Gadgets.and(sixBitsMessage, flag4SetMask, 6), sixBitsMessage);
 
     return sixBitsMessage;
   }

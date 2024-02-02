@@ -105,13 +105,59 @@ describe('Secrets', () => {
     // Use a nullifier
   });
 
-  it('should only store eligible administrator addresses', async () => {
-    // Use a merkle tree / merkle map for storage
-  });
+  // it('should not allow more than 100 eligible addresses to be stored', async () => {
+  //   // Use a specific merkle tree that equates to 100 nodes/leaves...
+  //   await localDeploy();
 
-  it('should not allow more than 100 eligible addresses to be stored', async () => {
-    // Use a specific merkle tree that equates to 100 nodes/leaves...
-  });
+  //   let i = 0;
+  //   let counter = 99;
+  //   const addressesTree = new MerkleTree(8);
+  //   for (; i < counter; i++) {
+  //     addressesTree.setLeaf(BigInt(i), Poseidon.hash(senderAccount.toFields()));
+  //   }
+
+  //   let txn = await Mina.transaction(senderAccount, () => {
+  //     zkApp.setAddressesCounter(Field(counter));
+  //   });
+  //   await txn.prove();
+  //   await txn.sign([senderKey]).send();
+  //   let addressesCount = zkApp.eligibleAddressesCount.get();
+  //   console.log('addressesCount', addressesCount.toString());
+  //   expect(addressesCount).toEqual(Field(counter));
+
+  //   addressesTree.setLeaf(BigInt(counter), Poseidon.hash(senderAccount.toFields()));
+  //   let witness = new EligibleAddressesWitness(addressesTree.getWitness(BigInt(counter)));
+
+  //   // update transaction
+  //   txn = await Mina.transaction(senderAccount, () => {
+  //     zkApp.addEligibleAddress(senderAccount, witness);
+  //   });
+  //   await txn.prove();
+  //   await txn.sign([senderKey]).send();
+
+  //   let newCount = counter + 1;
+
+  //   addressesCount = zkApp.eligibleAddressesCount.get();
+  //   console.log('addressesCount', addressesCount.toString());
+  //   expect(addressesCount).toEqual(Field(newCount));
+
+  //   let failed = false;
+
+  //   try {
+  //     addressesTree.setLeaf(BigInt(newCount), Poseidon.hash(senderAccount.toFields()));
+  //     witness = new EligibleAddressesWitness(addressesTree.getWitness(BigInt(newCount)));
+  //     txn = await Mina.transaction(senderAccount, () => {
+  //       zkApp.addEligibleAddress(senderAccount, witness);
+  //     });
+  //     await txn.prove();
+  //     await txn.sign([senderKey]).send();
+  //   } catch (e) {
+  //     failed = true;
+  //   }
+  //   console.log(failed);
+  //   expect(failed).toEqual(true);
+
+  // });
 
   it('should set all other flags in message to be false if flag 1 is true', async () => {
     // Bitwise operations
