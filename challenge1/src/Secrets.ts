@@ -1,4 +1,4 @@
-import { Field, SmartContract, state, State, method, PublicKey, MerkleWitness, Poseidon, Circuit, Provable, Gadgets } from 'o1js';
+import { Field, SmartContract, state, State, method, PublicKey, MerkleWitness, Poseidon, Circuit, Provable, Gadgets, Nullifier, MerkleMapWitness, Signature, MerkleMap } from 'o1js';
 
 export class SecretMessageWitness extends MerkleWitness(256) { }
 export class EligibleAddressesWitness extends MerkleWitness(8) { }
@@ -13,6 +13,8 @@ export class Secrets extends SmartContract {
   @state(Field) messagesRoot = State<Field>();
   @state(Field) nullifierRoot = State<Field>();
 
+  NullifierTree = new MerkleMap();
+
   init() {
     super.init();
     this.num.set(Field(1));
@@ -21,17 +23,15 @@ export class Secrets extends SmartContract {
     this.eligibleAddressesCount.set(Field(0));
     this.eligibleAddressesRoot.set(Field(0));
     this.messagesRoot.set(Field(0));
-    this.nullifierRoot.set(Field(0));
+    this.nullifierRoot.set(this.NullifierTree.getRoot());
   }
 
   @method setEligibleAddressesRoot(newRoot: Field) {
-    // only owners should do this
     this.eligibleAddressesRoot.getAndRequireEquals();
     this.eligibleAddressesRoot.set(newRoot);
   }
 
   @method setAddressesCounter(count: Field) {
-    // only owners should do this
     this.eligibleAddressesCount.getAndRequireEquals();
     this.eligibleAddressesCount.set(count);
   }
@@ -62,22 +62,19 @@ export class Secrets extends SmartContract {
     this.eligibleAddressesCount.set(newAddressCount);
   }
 
-  @method getValidMessage(message: Field) {
-    let mask = Field(0b00111111);
+  @method getValidMessage(message: Field): Field {
+    let mask: Field = Field(0b00111111);
     // Take last 6 bits
-    let sixBitsMessage = Gadgets.and(message, mask, 6);
+    let sixBitsMessage: Field = Gadgets.and(message, mask, 6);
 
-    let flag1Mask = Field(0b000001);
-    let flag2Mask = Field(0b000010);
-    let flag3Mask = Field(0b000100);
-    let flag4Mask = Field(0b001000);
-    let flag5Mask = Field(0b010000);
-    let flag6Mask = Field(0b100000);
+    let flag1Mask: Field = Field(0b000001);
+    let flag2Mask: Field = Field(0b000010);
+    let flag3Mask: Field = Field(0b000100);
+    let flag4Mask: Field = Field(0b001000);
 
-    let flag1 = Gadgets.and(sixBitsMessage, flag1Mask, 6);
-    let flag2 = Gadgets.and(sixBitsMessage, flag2Mask, 6);
-    let flag3 = Gadgets.and(sixBitsMessage, flag3Mask, 6);
-    let flag4 = Gadgets.and(sixBitsMessage, flag4Mask, 6);
+    let flag1: Field = Gadgets.and(sixBitsMessage, flag1Mask, 6);
+    let flag2: Field = Gadgets.and(sixBitsMessage, flag2Mask, 6);
+    let flag4: Field = Gadgets.and(sixBitsMessage, flag4Mask, 6);
 
     let flag1Set = flag1.equals(1); // 0b00000000
     let flag2Set = flag2.equals(2); // 0b00000010
@@ -87,15 +84,54 @@ export class Secrets extends SmartContract {
     sixBitsMessage = Provable.if(flag1Set, Field(1), sixBitsMessage);
 
     // If flag 2 is true, flag 3 must also be true
-    const notThirdMask = Gadgets.not(flag3Mask, 6);
-    let flag2res1 = Gadgets.and(notThirdMask, sixBitsMessage, 6);
-    let flag2res2 = Gadgets.xor(flag2res1, flag3Mask, 6);
+    const notThirdMask: Field = Gadgets.not(flag3Mask, 6);
+    let flag2res1: Field = Gadgets.and(notThirdMask, sixBitsMessage, 6);
+    let flag2res2: Field = Gadgets.xor(flag2res1, flag3Mask, 6);
     sixBitsMessage = Provable.if(flag2Set, flag2res2, sixBitsMessage);
 
     // If flag 4 is true, flag 5 and 6 must be false
-    let flag4SetMask = Field(0b001111);
+    let flag4SetMask: Field = Field(0b001111);
     sixBitsMessage = Provable.if(flag4Set, Gadgets.and(sixBitsMessage, flag4SetMask, 6), sixBitsMessage);
 
     return sixBitsMessage;
+  }
+
+  @method executeNullifier(nullifier: Nullifier) {
+
+    let nullifierRoot = this.nullifierRoot.getAndRequireEquals();
+
+    nullifier.verify(this.sender.toFields());
+    let nullfierWitness = Provable.witness(MerkleMapWitness, () =>
+      this.NullifierTree.getWitness(nullifier.key())
+    );
+    // Prevent a user/address from adding multiple addresses
+    nullifier.assertUnused(nullfierWitness, nullifierRoot);
+    let newRoot = nullifier.setUsed(nullfierWitness);
+    this.nullifierRoot.set(newRoot);
+  }
+
+  @method saveValidSecretMessages(nullifier: Nullifier, secretMessage: Field, messageWitness: MerkleMapWitness, signature: Signature, addressWitness: EligibleAddressesWitness) {
+
+    // Prevent a user/address from adding multiple addresses
+    this.executeNullifier(nullifier);
+
+    // Current user check if they are eligible
+    const userAddressRoot = this.eligibleAddressesRoot.getAndRequireEquals();
+    signature.verify(this.sender, secretMessage.toFields()).assertTrue();
+    const witnessRoot = addressWitness.calculateRoot(Poseidon.hash(this.sender.toFields()));
+    witnessRoot.assertEquals(userAddressRoot);
+
+    // Convert secret message into a valid message
+    let convertedMessage: Field = this.getValidMessage(secretMessage);
+
+    // Update messages root
+    this.messagesRoot.getAndRequireEquals();
+    const [messageRoot, _] = messageWitness.computeRootAndKey(Poseidon.hash(convertedMessage.toFields()));
+    this.messagesRoot.set(messageRoot);
+
+    // Update state counter
+    const currentState = this.messageCount.getAndRequireEquals();
+    const newState = currentState.add(1);
+    this.messageCount.set(newState);
   }
 }

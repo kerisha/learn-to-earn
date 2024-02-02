@@ -2,14 +2,7 @@ debugger;
 
 import { sizeInBits } from 'o1js/dist/node/provable/field-bigint';
 import { EligibleAddressesWitness, Secrets } from './Secrets';
-import { Field, Mina, PrivateKey, PublicKey, AccountUpdate, MerkleTree, Poseidon, Gadgets } from 'o1js';
-
-/*
- * This file specifies how to test the `Add` example smart contract. It is safe to delete this file and replace
- * with your own tests.
- *
- * See https://docs.minaprotocol.com/zkapps for more info.
- */
+import { Field, Mina, PrivateKey, PublicKey, AccountUpdate, MerkleTree, Poseidon, Gadgets, Nullifier, MerkleMap, Signature } from 'o1js';
 
 let proofsEnabled = false;
 
@@ -101,8 +94,41 @@ describe('Secrets', () => {
     expect(treeRoot).toEqual(addressesTree.getRoot());
   });
 
-  it('should only allow one address to submit one test message', async () => {
+  it('should allow one address to submit only one message', async () => {
     // Use a nullifier
+    await localDeploy();
+
+    let nullifierData = senderAccount.toFields();
+    let jsonNullifier = Nullifier.createTestNullifier(nullifierData, senderKey);
+    console.log('nullifier root before', zkApp.nullifierRoot.get().toString());
+
+    let txn = await Mina.transaction(senderAccount, () => {
+      zkApp.executeNullifier(Nullifier.fromJSON(jsonNullifier));
+    });
+    await txn.prove();
+    await txn.sign([senderKey]).send();
+    console.log('nullifier root after', zkApp.nullifierRoot.get().toString());
+
+    let verificationFailed = false;
+
+    try {
+      console.log('reusing nullifier');
+      let message2 = senderAccount.toFields();
+      let jsonNullifier2 = Nullifier.createTestNullifier(message2, senderKey);
+
+      txn = await Mina.transaction(senderAccount, () => {
+        zkApp.executeNullifier(Nullifier.fromJSON(jsonNullifier2));
+      });
+      console.log('reusing nullifier prove');
+      await txn.prove();
+      console.log('reusing nullifier sign and send');
+      await txn.sign([senderKey]).send();
+    } catch (e) {
+      verificationFailed = true;
+      console.log('error', e);
+    }
+
+    expect(verificationFailed).toEqual(true);
   });
 
   it('should not allow more than 100 eligible addresses to be stored', async () => {
@@ -208,4 +234,80 @@ describe('Secrets', () => {
     console.log(actual);
     expect(actual).toEqual(expected);
   });
+
+  it('can save secret message', async () => {
+    await localDeploy();
+
+    let nullifierData = senderAccount.toFields();
+    let jsonNullifier = Nullifier.createTestNullifier(nullifierData, senderKey);
+
+    const addressesTree = new MerkleTree(8);
+    addressesTree.setLeaf(0n, Poseidon.hash(senderAccount.toFields()));
+    const addressWitness = new EligibleAddressesWitness(addressesTree.getWitness(0n));
+
+    let txn = await Mina.transaction(senderAccount, () => {
+      zkApp.addEligibleAddress(senderAccount, addressWitness);
+    });
+    await txn.prove();
+    await txn.sign([senderKey]).send();
+
+    let map = new MerkleMap();
+    let secretMessage = Field(0b011101);
+    let mapIndex = Field(1);
+    map.set(mapIndex, Poseidon.hash(secretMessage.toFields()));
+    let messageWitness = map.getWitness(mapIndex);
+
+    let signature = Signature.create(senderKey, secretMessage.toFields());
+
+    txn = await Mina.transaction(senderAccount, () => {
+      zkApp.saveValidSecretMessages(Nullifier.fromJSON(jsonNullifier), secretMessage, messageWitness, signature, addressWitness);
+    });
+    await txn.prove();
+    await txn.sign([senderKey]).send();
+
+    let count = zkApp.messageCount.get();
+    expect(count).toEqual(Field(1));
+  });
+
+  it('addresses that are NOT eligible can not deposit a message', async () => {
+    await localDeploy();
+
+    let nullifierData = senderAccount.toFields();
+    let jsonNullifier = Nullifier.createTestNullifier(nullifierData, senderKey);
+
+    const addressesTree = new MerkleTree(8);
+    addressesTree.setLeaf(0n, Poseidon.hash(senderAccount.toFields()));
+    const addressWitness = new EligibleAddressesWitness(addressesTree.getWitness(0n));
+
+    // Eligible account with access to add message - sender account
+    let txn = await Mina.transaction(senderAccount, () => {
+      zkApp.addEligibleAddress(senderAccount, addressWitness);
+    });
+    await txn.prove();
+    await txn.sign([senderKey]).send();
+
+    let map = new MerkleMap();
+    let secretMessage = Field(0b011101);
+    let mapIndex = Field(1);
+    map.set(mapIndex, Poseidon.hash(secretMessage.toFields()));
+    let messageWitness = map.getWitness(mapIndex);
+
+    // Account without access - deployer account... so therefore deployer key used
+    let signature = Signature.create(deployerKey, secretMessage.toFields());
+
+    let failed = false;
+    try {
+      txn = await Mina.transaction(deployerAccount, () => {
+        zkApp.saveValidSecretMessages(Nullifier.fromJSON(jsonNullifier), secretMessage, messageWitness, signature, addressWitness);
+      });
+      await txn.prove();
+      await txn.sign([senderKey]).send();
+    } catch (error) {
+      failed = true;
+    }
+
+    // Address for deployer account can not add a message
+    expect(failed).toEqual(true);
+  });
+
 });
